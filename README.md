@@ -44,6 +44,11 @@ pip install -r requirements.txt
 ```
 
 > **macOS:** If `PyAudio` fails, run `brew install portaudio` first.  
+> *Note for Apple Silicon (M1/M2/M3):* If you get a `symbol not found` or `dlopen` error, install portaudio via native Homebrew and compile PyAudio with explicit paths:
+> ```bash
+> /opt/homebrew/bin/brew install portaudio
+> CFLAGS="-I/opt/homebrew/opt/portaudio/include" LDFLAGS="-L/opt/homebrew/opt/portaudio/lib" python3 -m pip install --force-reinstall --no-cache-dir pyaudio
+> ```
 > **Linux:** Run `sudo apt install portaudio19-dev python3-pyaudio`.
 
 ### 2. Set up environment variables
