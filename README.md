@@ -2,9 +2,11 @@
 
 > Control Spotify with your voice using Google Antigravity SDK + Gemini AI
 
-![Python](https://img.shields.io/badge/python-3.11+-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
-![Demo Mode](https://img.shields.io/badge/demo%20mode-supported-brightgreen)
+[![Spotify](https://img.shields.io/badge/Spotify-1ED760?style=for-the-badge&logo=spotify&logoColor=white)](https://open.spotify.com)
+[![Gemini](https://img.shields.io/badge/Gemini-8E75C2?style=for-the-badge&logo=googlegemini&logoColor=white)](https://ai.google.dev)
+[![Antigravity](https://img.shields.io/badge/Antigravity_SDK-1A73E8?style=for-the-badge&logo=google&logoColor=white)](https://pypi.org/project/google-antigravity/)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org)
+[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
 ## What is this?
 
