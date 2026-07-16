@@ -26,11 +26,38 @@ import spotify_tools
 from voice_input import listen_once, check_microphone
 
 # ── Banner ─────────────────────────────────────────────────────────────────
-BANNER = f"""
-{Fore.GREEN}╔══════════════════════════════════════════╗
-║  🎧  Voice DJ — Spotify Voice Agent      ║
-║      powered by Google Antigravity SDK   ║
-╚══════════════════════════════════════════╝{Style.RESET_ALL}
+BANNER = f"""{Fore.YELLOW}
+                   ########################
+                 ####                    ####%#
+               ###                          ###%#
+             ###                              ###%!
+            ##                                  ##
+           ##                                    ##
+          #@      /*#   *#       *#   *#          @@
+          #@      |*#   *#       *#   *#          ##
+          ##      |*#   *#       *#   *#          ##
+          ##     **#***#**       *#***#**         ##
+           ##       *               *            ##
+            ##    (____)         (____)          ##
+             #     |^^|   ____   |^^|           #
+             #     |__|  /    \\  |__|           #
+           ###           \\____/                ###*#
+          |   |                               |   |
+          |   |        ____         ____      |   |
+          |   |       |    |       |    |     |   |
+          |___|       |  . |       |    |     |___| ___
+            |         |    |       |    |       |  /   \\
+         |__|__|   |__|____|    |__|____|    |__|__| / \\ / \\ |
+                                                   | \\< > < >/ |
+                                                   |  </>  </>^ |
+                                                   |    <<,>>   /
+                                                   |____________|
+{Style.RESET_ALL}{Fore.GREEN}
+╔══════════════════════════════════════════════════════════════════════╗
+║  🎧  Voice DJ — Spotify Voice Agent                                  ║
+║      Powered by Google Antigravity SDK & Gemini AI                   ║
+║  👑  Author: CCGArima (Timur)                                        ║
+╚══════════════════════════════════════════════════════════════════════╝{Style.RESET_ALL}
 """
 
 SYSTEM_PROMPT = """You are Voice DJ — a friendly, enthusiastic AI DJ that controls Spotify
@@ -60,8 +87,65 @@ Example responses:
 - User: "что играет?" → call get_current_track(), share the info
 """
 
+# ── Transient-error handling ────────────────────────────────────────────────
+_MAX_ATTEMPTS = 3
 
-async def run_agent(text_mode: bool = False, demo_mode: bool = False):
+
+def _is_transient(err: str) -> bool:
+    """True for errors worth retrying on a *fresh* session.
+
+    Covers provider overload (HTTP 503 / 429) and the websocket the SDK closes
+    after such an error — the latter surfaces as "received 1000 (OK)".
+    """
+    e = err.lower()
+    return (
+        "503" in err
+        or "429" in err
+        or "high demand" in e
+        or "overloaded" in e
+        or "retryable" in e
+        or "received 1000" in e
+        or "sent 1000" in e
+    )
+
+
+async def send_command(config, user_input: str) -> None:
+    """Send one command to a fresh Agent session and stream the reply.
+
+    A new session is created for every attempt on purpose: when the provider
+    drops the websocket on a 503, the old session is dead, so retrying on it
+    only fails with "received 1000 (OK)". Recreating the session is what
+    actually recovers.
+    """
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        try:
+            async with Agent(config) as agent:
+                print(f"{Fore.GREEN}DJ ▶  {Style.RESET_ALL}", end="", flush=True)
+                response = await agent.chat(user_input)
+                async for chunk in response:
+                    print(chunk, end="", flush=True)
+                print("\n")
+            return
+        except Exception as e:
+            if _is_transient(str(e)) and attempt < _MAX_ATTEMPTS:
+                wait = 2 * attempt
+                print(
+                    f"\n{Fore.YELLOW}  ⏳ Gemini перегружен — попытка {attempt} из "
+                    f"{_MAX_ATTEMPTS} не удалась. Переподключаюсь через {wait} с...{Style.RESET_ALL}"
+                )
+                await asyncio.sleep(wait)
+                continue
+            if _is_transient(str(e)):
+                print(
+                    f"\n{Fore.RED}  ❌ Gemini сейчас сильно перегружен (HTTP 503/429). "
+                    f"Подожди минуту и повтори команду.{Style.RESET_ALL}\n"
+                )
+            else:
+                print(f"\n{Fore.RED}  ❌ Ошибка при выполнении: {e}{Style.RESET_ALL}\n")
+            return
+
+
+async def run_agent(text_mode: bool = False, demo_mode: bool = False, model: str | None = None):
     """Main agent loop."""
 
     # Override demo mode if flag passed
@@ -76,9 +160,12 @@ async def run_agent(text_mode: bool = False, demo_mode: bool = False):
         print(f"   Get one free at: https://aistudio.google.com/app/api-keys")
         sys.exit(1)
 
+    model_target = model or os.getenv("GEMINI_MODEL")
+
     # Build agent config with all Spotify tools
     config = LocalAgentConfig(
         api_key=api_key,
+        model=model_target,
         system_instructions=SYSTEM_PROMPT,
         tools=[
             spotify_tools.play_music,
@@ -117,38 +204,33 @@ async def run_agent(text_mode: bool = False, demo_mode: bool = False):
     print(f"    • quit / exit / выход{Style.RESET_ALL}")
     print(f"\n{Fore.WHITE}{'─' * 44}{Style.RESET_ALL}\n")
 
-    async with Agent(config) as agent:
-        while True:
-            try:
-                # ── Get user input ───────────────────────────────────────
-                if text_mode:
-                    try:
-                        user_input = input(f"{Fore.MAGENTA}You ▶  {Style.RESET_ALL}").strip()
-                    except (EOFError, KeyboardInterrupt):
-                        break
-                else:
-                    user_input = listen_once()
-                    if user_input:
-                        print(f"{Fore.MAGENTA}You ▶  {Style.RESET_ALL}{user_input}")
-
-                if not user_input:
-                    continue
-
-                # ── Exit commands ────────────────────────────────────────
-                if user_input.lower() in {"quit", "exit", "q", "выход", "стоп агент"}:
-                    print(f"\n{Fore.GREEN}🎧 Voice DJ signing off. Keep the music alive! 🎵{Style.RESET_ALL}")
+    while True:
+        try:
+            # ── Get user input ───────────────────────────────────────
+            if text_mode:
+                try:
+                    user_input = input(f"{Fore.MAGENTA}You ▶  {Style.RESET_ALL}").strip()
+                except (EOFError, KeyboardInterrupt):
                     break
+            else:
+                user_input = listen_once()
+                if user_input:
+                    print(f"{Fore.MAGENTA}You ▶  {Style.RESET_ALL}{user_input}")
 
-                # ── Send to agent ────────────────────────────────────────
-                print(f"{Fore.GREEN}DJ ▶  {Style.RESET_ALL}", end="", flush=True)
-                response = await agent.chat(user_input)
-                async for chunk in response:
-                    print(chunk, end="", flush=True)
-                print("\n")
+            if not user_input:
+                continue
 
-            except KeyboardInterrupt:
-                print(f"\n\n{Fore.GREEN}🎧 Stopped. Peace! ✌️{Style.RESET_ALL}")
+            # ── Exit commands ────────────────────────────────────────
+            if user_input.lower() in {"quit", "exit", "q", "выход", "стоп агент"}:
+                print(f"\n{Fore.GREEN}🎧 Voice DJ signing off. Keep the music alive! 🎵{Style.RESET_ALL}")
                 break
+
+            # ── Send to agent (fresh session per command; retries live in send_command) ──
+            await send_command(config, user_input)
+
+        except KeyboardInterrupt:
+            print(f"\n\n{Fore.GREEN}🎧 Stopped. Peace! ✌️{Style.RESET_ALL}")
+            break
 
 
 def main():
@@ -165,8 +247,14 @@ def main():
         action="store_true",
         help="Run in demo mode (no Spotify account needed)",
     )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Specify Gemini model target (e.g. gemini-2.5-flash)",
+    )
     args = parser.parse_args()
-    asyncio.run(run_agent(text_mode=args.text, demo_mode=args.demo))
+    asyncio.run(run_agent(text_mode=args.text, demo_mode=args.demo, model=args.model))
 
 
 if __name__ == "__main__":
